@@ -1,0 +1,29 @@
+services:
+  # Un bot Discord doit tourner en continu.
+  # - plan: free -> service Web, Render endort le process après 15 min sans trafic
+  #   HTTP. Le serveur de santé /health sert au health check et au ping externe.
+  # - Pour ne jamais être endormi : passe en Background Worker (plan: starter, payant)
+  #   et supprime healthCheckPath.
+  - type: web
+    name: yogosha-arena-bot
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # sync: false = Render demande la valeur au moment du déploiement.
+      # Les secrets ne sont jamais dans ce fichier.
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: COMPETITION_ID
+        sync: false
+      - key: ARENA_BASE_URL
+        value: https://hsg.yogosha.com
+      - key: CACHE_TTL_SECONDS
+        value: 30
+      - key: NODE_VERSION
+        value: 22

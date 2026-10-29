@@ -1,10 +1,26 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { ApiError } from './api.js';
+import { startHealthServer, stopHealthServer } from './server.js';
 import * as leaderboard from './commands/leaderboard.js';
 import * as score from './commands/score.js';
 
 const log = (...args) => console.log(`[${new Date().toISOString()}]`, ...args);
+
+const status = {
+  bot: null,
+  guilds: 0,
+  competition: config.competitionId,
+  uptime: 0,
+};
+
+startHealthServer(() => ({
+  ready: Boolean(status.bot),
+  bot: status.bot,
+  guilds: status.guilds,
+  competition: status.competition,
+  uptimeSeconds: Math.round(process.uptime()),
+}));
 
 const commands = new Map(
   [leaderboard, score].map((command) => [command.data.name, command]),
@@ -14,6 +30,9 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once(Events.ClientReady, async (ready) => {
   log(`Connecté en tant que ${ready.user.tag}`);
+
+  status.bot = ready.user.tag;
+  status.guilds = ready.guilds.cache.size;
 
   try {
     const body = [...commands.values()].map((command) => command.data.toJSON());
@@ -69,6 +88,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     log('Arrêt demandé, fermeture du bot.');
+    stopHealthServer();
     client.destroy();
     process.exit(0);
   });

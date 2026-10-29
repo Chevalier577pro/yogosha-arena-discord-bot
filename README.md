@@ -255,18 +255,119 @@ permissions Discord.
 
 ---
 
-## 9. Héberger 24/7 (nécessaire pour que d’autres s’en servent)
+## 9. Déployer sur Render
 
 Si le bot tourne sur ton PC, il s’arrête avec le terminal et les commandes
-disparaissent pour tout le monde.
+disparaissent pour tout le monde. Render héberge le process pour toi.
 
-- **VPS** : `npm install`, puis `pm2 start src/index.js --name arena-bot` + `pm2 save`
-- **Railway / Render / Fly.io** : importe le repo, ajoute `DISCORD_TOKEN` et
-  `COMPETITION_ID` dans les variables d’environnement, démarrage `npm start`
-- **Raspberry Pi / vieux PC** : même chose, en local, en permanence
+Le dépôt contient déjà `render.yaml` (blueprint) et `src/server.js` (serveur de
+santé `/health`, démarré **seulement** si la variable `PORT` existe — donc
+inutile en local).
+
+### 9.1 Préparer le dépôt
+
+Le code doit être sur **ton** compte GitHub (fork ou clone + push) :
+
+```powershell
+git clone https://github.com/Chevalier577pro/yogosha-arena-discord-bot.git
+cd yogosha-arena-discord-bot
+```
+
+`.env` n’est pas versionné : sur Render, tout passe par des **variables
+d’environnement** dans l’interface.
+
+### 9.2 Déploiement en un clic (blueprint)
+
+1. Va sur https://dashboard.render.com → **New +** → **Blueprint**
+2. Connecte ton compte GitHub, sélectionne ton fork du dépôt
+3. Render lit `render.yaml` et propose le service `yogosha-arena-bot`
+4. Il demande les deux secrets marqués `sync: false` :
+   - `DISCORD_TOKEN` → le token du §3.1
+   - `COMPETITION_ID` → le dernier segment de l’URL de ta compétition (§2)
+5. **Apply** → premier déploiement
+
+### 9.3 Déploiement manuel (sans blueprint)
+
+1. **New +** → **Web Service** (ou **Background Worker**, voir §9.5)
+2. **Connect a repository** → ton dépôt
+3. Renseigne :
+   - **Name** : `yogosha-arena-bot`
+   - **Region** : `Frankfurt` (le plus proche de la France)
+   - **Branch** : `main`
+   - **Runtime** : `Node`
+   - **Build Command** : `npm ci`
+   - **Start Command** : `npm start`
+   - **Instance Type** : `Free` (ou `Starter`)
+4. Onglet **Environment** → **Add Environment Variable** :
+
+   | Clé | Valeur |
+   | --- | --- |
+   | `DISCORD_TOKEN` | ton token Discord |
+   | `COMPETITION_ID` | l’identifiant de ta compétition |
+   | `ARENA_BASE_URL` | `https://hsg.yogosha.com` *(optionnel)* |
+   | `CACHE_TTL_SECONDS` | `30` *(optionnel)* |
+
+5. Onglet **Settings** → **Health Check Path** : `/health`
+6. **Create Web Service**
+
+> `GUILD_ID` : **ne la mets pas** en production, sinon les commandes ne sont
+> enregistrées que sur un seul serveur.
+
+### 9.4 Vérifier que ça tourne
+
+- Onglet **Logs** : tu dois voir la connexion, l’enregistrement des commandes et
+  `Compétition suivie : …`
+- `https://<ton-service>.onrender.com/health` doit renvoyer :
+
+  ```json
+  { "ok": true, "ready": true, "bot": "…", "guilds": 0, "competition": "…", "uptimeSeconds": 42 }
+  ```
+
+  `"ready": true` = le bot est connecté à Discord.
+- Dans Discord, `/leaderboard` doit répondre (jusqu’à 1 h pour la première
+  apparition des commandes globales)
+
+### 9.5 Offre gratuite : le piège du sommeil
+
+Render **endort** un service Web gratuit après **15 minutes sans requête HTTP**.
+Un bot Discord n’envoie pas de requêtes HTTP entrantes : il se fait donc
+déconnecter, et les commandes cessent de répondre.
+
+Deux solutions :
+
+**A. Réveiller le service par un ping externe (gratuit)**
+
+1. Crée un moniteur sur https://cron-job.org ou https://uptimerobot.com
+2. URL à appeler : `https://<ton-service>.onrender.com/health`
+3. Intervalle : **10 minutes**
+4. C’est tout : chaque ping réveille le service et le maintient éveillé.
+
+Le serveur `/health` existe exactement pour ça : il répond en JSON, sans toucher
+à Discord ni à l’API de la plateforme.
+
+**B. Background Worker (payant, sans sommeil)**
+
+Un worker ne dort jamais et n’a pas besoin de port HTTP. Dans `render.yaml`,
+remplace `type: web` par `type: worker`, `plan: free` par `plan: starter`, et
+supprime `healthCheckPath`. Compte ~7 $/mois.
+
+### 9.6 Mettre à jour le bot
+
+`autoDeploy: true` dans `render.yaml` : chaque `git push` sur `main` redéploie
+automatiquement. Sinon, **Manual Deploy → Deploy latest commit** dans le
+dashboard.
+
+Les commandes sont réenregistrées à chaque démarrage : rien à faire à la main.
+
+### 9.7 Autres hébergeurs
+
+- **VPS** : `npm ci`, puis `pm2 start src/index.js --name arena-bot` + `pm2 save`
+- **Railway / Fly.io** : mêmes variables d’environnement, `npm start`, pas besoin
+  de `PORT` (Fly demande un `internal_port`, mets celui de `PORT`)
+- **Raspberry Pi / vieux PC** : identique en local, branché en permanence
 
 Ne mets **jamais** le token Discord dans le code ou dans Git : uniquement dans les
-variables d’environnement.
+variables d’environnement de l’hébergeur.
 
 ---
 
@@ -280,6 +381,7 @@ variables d’environnement.
 │  ├─ api.js                client de l’API publique + cache 30 s
 │  ├─ format.js             tableau ANSI, podium, durées, normalisation
 │  ├─ players.js            chargement de data/players.json
+│  ├─ server.js             serveur de santé /health (hébergeurs uniquement)
 │  ├─ deploy-commands.js    enregistrement manuel des slash commands
 │  └─ commands/
 │     ├─ leaderboard.js     /leaderboard
@@ -288,6 +390,8 @@ variables d’environnement.
 ├─ scripts/
 │  ├─ smoke.mjs             test hors Discord
 │  └─ invite.mjs            lien d’invitation + vérification Public Bot
+├─ render.yaml              blueprint de déploiement Render
+├─ .nvmrc                   version de Node (22)
 ├─ .env.example             modèle de configuration
 ├─ LICENSE                  MIT
 └─ package.json
@@ -308,6 +412,10 @@ variables d’environnement.
 | Les commandes n’apparaissent pas du tout | scope `applications.commands` manquant | réinvite avec `npm run invite` |
 | `Missing Access` | permission manquante dans le salon | donne « Voir le salon » + « Envoyer des messages » au bot |
 | `Joueur introuvable` | pseudo Discord ≠ pseudo plateforme | ajoute une entrée dans `data/players.json` |
+| Le bot marche puis **meurt après ~15 min** sur Render | service gratuit endormi | ping externe sur `/health` ou Background Worker (§9.5) |
+| Render affiche **No open ports detected** | le bot n’écoute pas `PORT` | supprime `PORT` en local, laisse Render l’injecter ; vérifie `/health` |
+| Logs Render : `Variable manquante` | variable absente du dashboard | onglet **Environment**, pas `.env` (qui n’est pas versionné) |
+| `/health` renvoie `"ready": false` | process démarré, Discord pas encore connecté | attends quelques secondes, sinon token invalide |
 | `L’API a répondu HTTP 5xx` | souci côté plateforme | réessaie, le bot ne casse pas |
 | `HTTP 404` | `COMPETITION_ID` d’une compétition inexistante | vérifie l’URL |
 
