@@ -12,7 +12,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName('joueur')
-      .setDescription('Ou directement le pseudo Yogosha (ex : shards)')
+      .setDescription('Ou directement le pseudo Yogosha (autocomplétion incluse)')
       .setAutocomplete(true)
       .setRequired(false),
   )

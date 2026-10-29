@@ -1,13 +1,22 @@
 /**
  * Test de fumée hors Discord : vérifie que l'API répond, que les embeds se
  * construisent avec les bons champs et tiennent dans les limites Discord.
- *   node scripts/smoke.mjs
+ *   npm run smoke
  */
+import 'dotenv/config';
+
 process.env.DISCORD_TOKEN ??= 'smoke-test-sans-connexion';
-process.env.COMPETITION_ID ??= 'm58ywQeiPK8Iz9u4oDS0Rw';
+
+if (!process.env.COMPETITION_ID) {
+  console.error(
+    'COMPETITION_ID n’est pas défini.\n' +
+      'Renseigne-le dans .env : dernier segment de https://hsg.yogosha.com/public/competitions/<ID>',
+  );
+  process.exit(1);
+}
 
 const { getSnapshot, getHunter } = await import('../src/api.js');
-const { describeWindow, humanDuration, bar } = await import('../src/format.js');
+const { describeWindow } = await import('../src/format.js');
 const leaderboard = await import('../src/commands/leaderboard.js');
 const score = await import('../src/commands/score.js');
 
@@ -27,11 +36,13 @@ console.log('Fenêtre      :', describeWindow(round.start_date, round.end_date))
 console.log('Participants :', standings.length);
 console.log('');
 
+if (standings.length === 0) fail('le classement est vide : /leaderboard n’afficherait rien');
+
 // --- /leaderboard : on teste le vrai chemin de rendu, pas une copie -------
 const pages = leaderboard.chunk(standings, 15);
 
 for (let index = 0; index < pages.length; index += 1) {
-  const embed = leaderboard.renderEmbed(snapshot, index, { pages, highlight: 'shards' });
+  const embed = leaderboard.renderEmbed(snapshot, index, { pages });
   const description = embed.data.description ?? '';
 
   if (description.includes('undefined') || description.includes('NaN')) {
@@ -66,16 +77,12 @@ for (const field of ['rank', 'display_name', 'total_kudos', 'report_count', 'acc
 }
 
 const scoreEmbed = score.buildScoreEmbed(snapshot, target, detail);
-const scoreText = JSON.stringify(scoreEmbed.data);
 
-if (scoreText.includes('undefined') || scoreText.includes('NaN')) {
-  fail('/score : un champ manque dans l’embed');
-}
-if ((scoreEmbed.data.fields ?? []).length > 25) {
-  fail('/score : trop de champs');
-}
+if (JSON.stringify(scoreEmbed.data).includes('undefined')) fail('/score : un champ manque dans l’embed');
+if (JSON.stringify(scoreEmbed.data).includes('NaN')) fail('/score : division par zéro dans l’embed');
+if ((scoreEmbed.data.fields ?? []).length > 25) fail('/score : trop de champs');
 
-console.log(`--- /score ${target.display_name} ---`);
+console.log(`--- /score pour « ${target.display_name} » ---`);
 console.log(strip(scoreEmbed.data.title));
 for (const field of scoreEmbed.data.fields) {
   console.log(`  ${strip(field.name)} : ${strip(field.value)}`);
