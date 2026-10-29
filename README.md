@@ -1,21 +1,25 @@
 # 🤖 Yogosha Arena — Bot Discord
 
 Bot Discord en Node.js qui expose deux commandes branchées **en direct** sur l’API
-publique de [hsg.yogosha.com](https://hsg.yogosha.com) :
+publique de [hsg.yogosha.com](https://hsg.yogosha.com).
+
+> **Fonctionne sur n’importe quel serveur.** Les commandes sont enregistrées
+> **globalement** : dès que le bot rejoint un serveur, `/leaderboard` et `/score`
+> y sont disponibles. Aucune configuration par serveur.
 
 | Commande | Ce qu’elle fait |
 | --- | --- |
 | `/leaderboard` | Classement complet de la compétition, paginé, avec kudos, reports envoyés/acceptés, first bloods, nombre de participants, temps restant avant la fermeture de la manche |
 | `/score` | Score détaillé d’**une seule** personne : rang, kudos, écart avec le leader, taux d’acceptation, détail par manche, stats cumulées |
 
-Aucune clé API n’est nécessaire : les endpoints utilisés sont publics.
+Aucune clé API n’est nécessaire : les endpoints utilisés sont publics. Licence MIT.
 
 ---
 
 ## 1. Ce qu’il te faut
 
 - **Node.js 20 ou plus** → https://nodejs.org (version LTS)
-- Un **compte Discord** et les droits « Gérer le serveur » sur ton serveur
+- Un **compte Discord** et les droits « Gérer le serveur » sur au moins un serveur
 - 5 minutes
 
 Vérifie Node :
@@ -41,15 +45,16 @@ DISCORD_TOKEN=le_token_du_bot
 COMPETITION_ID=m58ywQeiPK8Iz9u4oDS0Rw
 ARENA_BASE_URL=https://hsg.yogosha.com
 CACHE_TTL_SECONDS=30
-# GUILD_ID=123456789012345678   <-- optionnel mais recommandé
+GUILD_ID=
 ```
 
-Tu as déjà la bonne valeur pour `COMPETITION_ID` : c’est l’identifiant dans l’URL
-`https://hsg.yogosha.com/public/competitions/<ID>`.
+- `COMPETITION_ID` = l’identifiant dans l’URL
+  `https://hsg.yogosha.com/public/competitions/<ID>`
+- `GUILD_ID` **reste vide** en usage normal (voir §4)
 
 ---
 
-## 3. Créer le bot sur Discord (le seul truc que tu dois faire à la main)
+## 3. Créer le bot sur Discord
 
 ### 3.1 Créer l’application
 
@@ -58,38 +63,62 @@ Tu as déjà la bonne valeur pour `COMPETITION_ID` : c’est l’identifiant dan
 3. Onglet **Bot** (menu de gauche) → **Reset Token** → **Yes, do it!**
 4. **Copie le token** (il ne s’affiche qu’une fois) → colle-le dans `.env` après
    `DISCORD_TOKEN=`
-5. Toujours dans **Bot**, laisse les *Privileged Gateway Intents* désactivés :
-   le bot n’a besoin que de `Guilds`, qui est natif.
+5. Toujours dans **Bot**, vérifie / active :
+   - ✅ **Public Bot** → sinon personne d’autre ne pourra inviter le bot
+   - ❌ **Requires OAuth2 Code Grant** → décoché
+   - Les *Privileged Gateway Intents* restent **désactivés** : le bot n’a besoin
+     que de `Guilds`, qui est natif.
 
-### 3.2 Inviter le bot sur ton serveur
+### 3.2 Inviter le bot (sur ton serveur ou sur n’importe quel autre)
 
-1. Onglet **OAuth2** → **URL Generator**
-2. Coche les scopes :
-   - ✅ `bot`
-   - ✅ `applications.commands`
-3. Dans **Bot Permissions**, coche :
-   - ✅ Send Messages
-   - ✅ Embed Links
-   - ✅ Read Message History
-   - ✅ Use Application Commands
-4. Copie l’URL générée en bas, ouvre-la dans ton navigateur, choisis ton serveur,
-   autorise.
-
-### 3.3 Récupérer l’ID du serveur (recommandé)
-
-Dans Discord : **Paramètres → Avancés → Mode développeur** (à activer), puis
-clic droit sur ton serveur → **Copier l’ID du serveur**. Colle-le dans `.env` :
-
-```env
-GUILD_ID=123456789012345678
+```powershell
+npm run invite
 ```
 
-> Sans `GUILD_ID`, les commandes sont enregistrées **globalement** et Discord peut
-> mettre jusqu’à **1 heure** à les afficher. Avec `GUILD_ID`, c’est instantané.
+Le script parle à l’API Discord avec ton token, récupère l’ID de l’application et
+affiche un lien du type :
+
+```
+https://discord.com/oauth2/authorize?client_id=1234...&permissions=84992&scope=bot%20applications.commands
+```
+
+Envoie ce lien à qui tu veux : **toute personne ayant « Gérer le serveur » peut
+ajouter le bot à son serveur** avec ce seul lien. Il inclut déjà les scopes
+`bot` + `applications.commands` et les permissions minimales (Voir les salons,
+Envoyer des messages, Intégrer des liens, Lire l’historique).
+
+Le script te prévient aussi si **Public Bot** est désactivé — c’est le piège
+classique quand le bot refuse de s’ajouter ailleurs.
+
+### 3.3 Vérifier
+
+```powershell
+npm run invite
+```
+
+Tu dois voir `Public Bot : oui`, `OAuth2 code grant : non`.
 
 ---
 
-## 4. Lancer le bot
+## 4. Commandes globales vs serveur de test
+
+| `GUILD_ID` dans `.env` | Portée des commandes | Délai d’apparition |
+| --- | --- | --- |
+| **vide** (défaut) | **Global** — tous les serveurs qui invitent le bot | jusqu’à **1 h** |
+| renseigné | Uniquement ce serveur | instantané |
+
+En production, laisse `GUILD_ID` vide. Ne le renseigne que pour développer : envoyer
+une commande globale à chaque modification fait attendre une heure avant de tester.
+
+Pour forcer une mise à jour globale :
+
+```powershell
+npm run deploy
+```
+
+---
+
+## 5. Lancer le bot
 
 ```powershell
 npm start
@@ -99,21 +128,20 @@ Tu dois voir :
 
 ```
 [2026-10-29T…] Connecté en tant que Arena Buddy#1234
-[2026-10-29T…] 2 commande(s) enregistrée(s)
+[2026-10-29T…] 2 commande(s) enregistrée(s) globalement (propagation jusqu’à 1 h)
 [2026-10-29T…] Compétition suivie : m58ywQeiPK8Iz9u4oDS0Rw
 ```
 
-Si tu modifies une commande et que Discord ne se met pas à jour :
+`Ctrl + C` pour arrêter.
 
-```powershell
-npm run deploy
-```
-
-Fais `Ctrl + C` pour arrêter.
+Combien de serveurs ? Discord n’affiche pas la liste dans le script, mais tu peux
+la voir dans le **Developer Portal → ton app → Bot**. Au-delà de 75 serveurs,
+Discord exige une **vérification** (formulaire, quelques jours) avant d’augmenter
+la limite à 2500 commandes globales et plus de serveurs.
 
 ---
 
-## 5. Utilisation
+## 6. Utilisation
 
 ### `/leaderboard`
 
@@ -122,8 +150,8 @@ Fais `Ctrl + C` pour arrêter.
 /leaderboard manche:1
 ```
 
-Affiche 15 joueurs par page, avec les boutons ◀ / ▶ pour naviguer (seul l’auteur
-de la commande peut cliquer).
+Affiche 15 joueurs par page, avec les boutons ◀ / ▶ (seul l’auteur de la commande
+peut cliquer).
 
 - **Podium** (page 1) : 🥇 🥈 🥉 avec les ex-kæquo regroupés
 - **Tableau coloré** : 1ᵉʳ en or, 2ᵉ en blanc, 3ᵉ en magenta — et **ta propre
@@ -157,9 +185,8 @@ Résolution du pseudo, dans l’ordre :
 Si plusieurs joueurs correspondent (ex. `ryo` et `ryozaki`), le bot répond avec
 la liste et te demande de préciser.
 
-### Relier un membre Discord à un pseudo Yogosha
-
-`data/players.json` :
+`data/players.json` est **partagé par tous les serveurs** — c’est une simple table
+`ID Discord → pseudo Yogosha` :
 
 ```json
 {
@@ -169,12 +196,11 @@ la liste et te demande de préciser.
 ```
 
 Clé = ID Discord (mode développeur → clic droit sur le membre → Copier l’ID),
-valeur = pseudo **exact** sur Yogosha. Le fichier est relu au démarrage du bot ;
-redémarre après modification.
+valeur = pseudo **exact** sur Yogosha. Redémarre le bot après modification.
 
 ---
 
-## 6. L’API utilisée
+## 7. L’API utilisée
 
 Base : `https://hsg.yogosha.com/api` (configurée via `window.__RUNTIME_CONFIG__.API_BASE_URL`).
 Tout est public, en lecture seule, sans authentification.
@@ -187,23 +213,16 @@ Tout est public, en lecture seule, sans authentification.
 | GET | `/api/public/competitions/{id}/hunters/{hunterId}` | détail d’un hunter : kudos par manche, rang, stats cumulées |
 | GET | `/api/public/competitions/{id}/events?since_id=0` | flux d’événements (vide sur cette compétition) |
 
-Champs d’une ligne de `standings` :
+Champs d’une ligne de `standings` → colonnes du bot (`toTableRow` fait la traduction) :
 
-```json
-{
-  "rank": 1,
-  "participant_type": "hunter",
-  "participant_id": 47,
-  "display_name": "shards",
-  "total_kudos": 40,
-  "report_count": 12,
-  "accepted_count": 4,
-  "first_blood_count": 0,
-  "critical_count": 0,
-  "is_eliminated": false,
-  "eliminated_at": null
-}
-```
+| API | Tableau |
+| --- | --- |
+| `rank` | `#` |
+| `display_name` | `Joueur` |
+| `total_kudos` | `KUDOS` |
+| `report_count` | `REP` |
+| `accepted_count` | `ACC` |
+| `first_blood_count` | `FB` |
 
 Deux points à connaître :
 
@@ -220,35 +239,37 @@ curl.exe https://hsg.yogosha.com/api/public/competitions/m58ywQeiPK8Iz9u4oDS0Rw/
 
 ---
 
-## 7. Vérifier que tout marche sans Discord
+## 8. Vérifier que tout marche sans Discord
 
 ```powershell
-node scripts/smoke.mjs
+npm run smoke
 ```
 
-Ça interroge l’API, affiche le tableau, la fenêtre horaire et le détail d’un
-joueur, sans se connecter à Discord. Pratique si le bot ne démarre pas : si ce
-script passe, le problème vient du token ou des permissions.
+Ça interroge l’API, **construit les vrais embeds** (les mêmes fonctions que le
+bot), vérifie qu’aucun champ n’est `undefined`, que rien ne dépasse les limites
+Discord, et affiche le rendu. Si ce script passe, le problème vient du token ou
+des permissions.
 
 ---
 
-## 8. Héberger 24/7 (optionnel)
+## 9. Héberger 24/7 (obligatoire pour que d’autres s’en servent)
 
-Le bot s’arrête quand tu fermes le terminal. Trois options simples :
+**Ton PC n’est pas un hébergeur.** Si le bot s’arrête, les commandes disparaissent
+pour tout le monde. Trois options simples :
 
-- **VPS** (Hostinger, OVH, Hetzner…) : `npm install`, `npm start`, et
-  `pm2 start src/index.js --name arena-bot` pour qu’il redémarre tout seul.
+- **VPS** (Hostinger, OVH, Hetzner…) : `npm install`, puis
+  `pm2 start src/index.js --name arena-bot` + `pm2 save` — redémarrage auto.
 - **Railway / Render / Fly.io** : importe le repo GitHub, ajoute `DISCORD_TOKEN`
   et `COMPETITION_ID` dans les variables d’environnement, commande de démarrage
   `npm start`.
-- **Raspberry Pi / vieux PC** : même chose, en local.
+- **Raspberry Pi / vieux PC** : même chose, en local, branché en permanence.
 
-Ne mets **jamais** le token Discord dans le code ou dans Git : uniquement dans
-les variables d’environnement.
+Ne mets **jamais** le token Discord dans le code ou dans Git : uniquement dans les
+variables d’environnement.
 
 ---
 
-## 9. Structure du projet
+## 10. Structure du projet
 
 ```
 dsc bot/
@@ -256,38 +277,50 @@ dsc bot/
 │  ├─ index.js              point d’entrée, connexion + routage des interactions
 │  ├─ config.js             lecture et validation du .env
 │  ├─ api.js                client de l’API publique + cache 30 s
-│  ├─ format.js             tableau monospace, durées, barres, normalisation
+│  ├─ format.js             tableau ANSI, podium, durées, normalisation
 │  ├─ players.js            chargement de data/players.json
 │  ├─ deploy-commands.js    enregistrement manuel des slash commands
 │  └─ commands/
 │     ├─ leaderboard.js     /leaderboard
 │     └─ score.js           /score (+ autocomplétion)
 ├─ data/players.json        mapping ID Discord → pseudo Yogosha
-├─ scripts/smoke.mjs        test hors Discord
+├─ scripts/
+│  ├─ smoke.mjs             test hors Discord
+│  └─ invite.mjs            génère le lien d’invitation + vérifie Public Bot
 ├─ .env.example             modèle de configuration
+├─ LICENSE                  MIT
 └─ package.json
 ```
 
 ---
 
-## 10. Dépannage
+## 11. Dépannage
 
 | Symptôme | Cause probable | Solution |
 | --- | --- | --- |
 | `Variable manquante : DISCORD_TOKEN` | `.env` absent ou vide | `Copy-Item .env.example .env` puis remplis |
 | `An invalid token was provided` | token faux ou régénéré | Reset Token + nouveau `.env` |
-| Les commandes n’apparaissent pas | enregistrement global en cours | mets `GUILD_ID`, redémarre, ou attends 1 h |
-| `Missing Access` à l’invitation | scope `applications.commands` manquant | refais l’URL OAuth2 avec les deux scopes |
+| Quelqu’un d’autre ne peut pas ajouter le bot | **Public Bot** désactivé | §3.1, puis `npm run invite` |
+| Les commandes n’apparaissent pas ailleurs | global encore en propagation | attends 1 h, ou `npm run deploy` |
+| Les commandes n’apparaissent pas du tout | scope `applications.commands` manquant | réinvite avec `npm run invite` |
+| `Missing Access` | permission manquante dans le salon | donne « Voir le salon » + « Envoyer des messages » au bot |
 | `Joueur introuvable` | pseudo Discord ≠ pseudo Yogosha | ajoute une entrée dans `data/players.json` |
 | `L’API a répondu HTTP 5xx` | souci côté Yogosha | réessaie, le bot ne casse pas |
-| Le bot s’arrête à la fermeture du terminal | normal | héberge-le (§8) |
+| Le bot s’arrête à la fermeture du terminal | normal | héberge-le (§9) |
 
 ---
 
-## 11. Sécurité
+## 12. Sécurité
 
 - `.env` est dans `.gitignore`, il ne partira jamais sur GitHub.
 - Les données de l’API sont publiques : rien de confidentiel n’est manipulé.
 - Le tableau est envoyé en bloc de code monospace — les pseudos ne peuvent pas
-  casser la mise en forme ni injecter de mention `@everyone` (ils sont rendus
-  en texte brut dans un ``` ``` ```).
+  casser la mise en forme ni injecter de mention `@everyone`.
+- Aucun stockage : le bot ne conserve ni messages, ni IDs, ni historique.
+
+---
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE). Les données appartiennent à Yogosha et aux
+participants ; ce bot ne fait que lire leur API publique.
