@@ -18,23 +18,68 @@ export function truncate(value, max) {
 const padRight = (value, width) => truncate(value, width).padEnd(width, ' ');
 const padLeft = (value, width) => String(value).padStart(width, ' ');
 
+/** Affiche une valeur absente comme un tiret plutôt que « undefined ». */
+function show(value) {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number' && Number.isNaN(value)) return '—';
+  return String(value);
+}
+
+const ESC = '\u001b[';
+const RESET = `${ESC}0m`;
+const paint = (text, code) => (code ? `${ESC}${code}m${text}${RESET}` : text);
+
+/** Couleurs ANSI Discord : or, argent, bronze. */
+const RANK_COLOR = { 1: '1;33', 2: '1;37', 3: '1;35' };
+
 /**
- * Tableau monospace. `rows` = [{ rank, name, kudos, reports, accepted, firstBloods }]
+ * Convertit une ligne de `standings` de l'API en ligne de tableau.
+ * C'est le seul endroit où les noms de champs de l'API sont traduits.
  */
-export function buildTable(rows) {
-  const NAME = 18;
-  const lines = [
-    `${padLeft('#', 3)}  ${padRight('Joueur', NAME)} ${padLeft('Kudos', 6)} ${padLeft('Rap', 4)} ${padLeft('Acc', 4)} ${padLeft('FB', 3)}`,
-    `${'─'.repeat(3)}  ${'─'.repeat(NAME)} ${'─'.repeat(6)} ${'─'.repeat(4)} ${'─'.repeat(4)} ${'─'.repeat(3)}`,
-  ];
+export function toTableRow(standing) {
+  return {
+    rank: standing?.rank,
+    name: standing?.display_name,
+    kudos: standing?.total_kudos ?? 0,
+    reports: standing?.report_count ?? 0,
+    accepted: standing?.accepted_count ?? 0,
+    firstBloods: standing?.first_blood_count ?? 0,
+  };
+}
+
+const COLUMNS = [
+  { label: '#', width: 3, align: 'right', field: 'rank' },
+  { label: 'JOUEUR', width: 17, align: 'left', field: 'name' },
+  { label: 'KUDOS', width: 6, align: 'right', field: 'kudos' },
+  { label: 'REP', width: 4, align: 'right', field: 'reports' },
+  { label: 'ACC', width: 4, align: 'right', field: 'accepted' },
+  { label: 'FB', width: 3, align: 'right', field: 'firstBloods' },
+];
+
+const renderRow = (values) =>
+  values
+    .map((value, i) =>
+      COLUMNS[i].align === 'right' ? padLeft(show(value), COLUMNS[i].width) : padRight(show(value), COLUMNS[i].width),
+    )
+    .join('  ');
+
+/**
+ * Tableau monospace coloré. `rows` doit venir de `toTableRow`.
+ * `highlight` met en avant un pseudo (celui de l'auteur de la commande).
+ */
+export function buildTable(rows, { highlight = null } = {}) {
+  const header = renderRow(COLUMNS.map((column) => column.label));
+  const rule = COLUMNS.map((column) => '─'.repeat(column.width)).join('  ');
+
+  const lines = [paint(header, '1;36'), paint(rule, '0;34')];
 
   for (const row of rows) {
-    lines.push(
-      `${padLeft(row.rank, 3)}  ${padRight(row.name, NAME)} ${padLeft(row.kudos, 6)} ${padLeft(row.reports, 4)} ${padLeft(row.accepted, 4)} ${padLeft(row.firstBloods, 3)}`,
-    );
+    const line = renderRow(COLUMNS.map((column) => row?.[column.field]));
+    const isMe = highlight && normalize(row?.name) === normalize(highlight);
+    lines.push(paint(line, isMe ? '1;32' : (RANK_COLOR[row?.rank] ?? null)));
   }
 
-  return ['```', ...lines, '```'].join('\n');
+  return ['```ansi', ...lines, '```'].join('\n');
 }
 
 /** 90_000 -> "1 min 30 s" */
@@ -88,4 +133,21 @@ export function bar(part, total, width = 12) {
 export function fitField(value, max = 1024) {
   const str = String(value ?? '');
   return str.length <= max ? str : `${str.slice(0, max - 3)}...`;
+}
+
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+/** Podium compact pour la première page du classement. */
+export function podium(standings) {
+  const lines = [];
+
+  for (const rank of [1, 2, 3]) {
+    const group = standings.filter((row) => row.rank === rank);
+    if (group.length === 0) continue;
+
+    const names = group.map((row) => `**${row.display_name}**`).join(' · ');
+    lines.push(`${MEDALS[rank - 1]} ${names} — ${group[0].total_kudos} kudos`);
+  }
+
+  return lines.join('\n');
 }

@@ -46,6 +46,79 @@ function candidateList(matches) {
     .join('\n');
 }
 
+/**
+ * Construit l'embed /score. Exporté pour que scripts/smoke.mjs teste le vrai rendu.
+ */
+export function buildScoreEmbed(snapshot, row, detail) {
+  const { standings, competition, round, rounds } = snapshot;
+
+  const leaderKudos = standings.reduce((best, item) => Math.max(best, item.total_kudos ?? 0), 0);
+  const totalKudos = standings.reduce((sum, item) => sum + (item.total_kudos ?? 0), 0);
+  const gap = leaderKudos - (row.total_kudos ?? 0);
+  const roundDetail = detail?.rounds ?? [];
+
+  const embed = new EmbedBuilder()
+    .setColor(row.is_eliminated ? 0x808080 : 0x7c5cff)
+    .setAuthor({ name: `Score de ${row.display_name}` })
+    .setTitle(`Rang ${row.rank} · ${row.total_kudos ?? 0} kudos`)
+    .setDescription(
+      [
+        `**Manche ${round.round_number}** — ${round.status}`,
+        describeWindow(round.start_date, round.end_date),
+        '',
+        `${bar(row.total_kudos ?? 0, leaderKudos)} ${row.total_kudos ?? 0}/${leaderKudos} du leader`,
+      ].join('\n'),
+    )
+    .addFields(
+      { name: 'Kudos', value: `**${row.total_kudos ?? 0}**`, inline: true },
+      { name: 'Rang', value: `**${row.rank ?? '—'}** / ${standings.length}`, inline: true },
+      { name: 'Écart avec le 1er', value: gap > 0 ? `-${gap}` : '🏆 leader', inline: true },
+      { name: 'Reports envoyés', value: String(row.report_count ?? 0), inline: true },
+      {
+        name: 'Reports acceptés',
+        value: `${row.accepted_count ?? 0} (${ratio(row.accepted_count ?? 0, row.report_count ?? 0)})`,
+        inline: true,
+      },
+      { name: 'First bloods', value: String(row.first_blood_count ?? 0), inline: true },
+      { name: 'Critiques', value: String(row.critical_count ?? 0), inline: true },
+      { name: 'Statut', value: row.is_eliminated ? '❌ éliminé' : '✅ en course', inline: true },
+      { name: 'Part des kudos', value: `${ratio(row.total_kudos ?? 0, totalKudos)} du total`, inline: true },
+    );
+
+  if (roundDetail.length > 0) {
+    embed.addFields({
+      name: 'Détail par manche',
+      value: fitField(
+        roundDetail
+          .map(
+            (item) =>
+              `**M${item.round_number}** — ${item.total_kudos ?? 0} kudos · rang ${item.rank ?? '—'}${item.is_eliminated ? ' · éliminé' : ''}`,
+          )
+          .join('\n'),
+      ),
+      inline: false,
+    });
+  }
+
+  if (detail && (detail.lifetime_kudos != null || detail.lifetime_reports != null)) {
+    embed.addFields({
+      name: 'Statistiques cumulées (compétition entière)',
+      value: fitField(
+        [
+          `Kudos : **${detail.lifetime_kudos ?? '—'}**`,
+          `Reports : **${detail.lifetime_reports ?? '—'}**`,
+          `First bloods : **${detail.lifetime_first_bloods ?? '—'}**`,
+        ].join(' · '),
+      ),
+      inline: false,
+    });
+  }
+
+  return embed
+    .setFooter({ text: `${competition.name} · manche ${round.round_number}/${rounds.length}` })
+    .setTimestamp();
+}
+
 export async function execute(interaction) {
   const user = interaction.options.getUser('user');
   const pseudo = interaction.options.getString('joueur')?.trim();
@@ -60,7 +133,7 @@ export async function execute(interaction) {
   }
 
   const snapshot = await getSnapshot(requestedRound ?? undefined);
-  const { standings, competition, round, rounds } = snapshot;
+  const { standings, round } = snapshot;
 
   const players = await loadPlayers();
 
@@ -110,71 +183,7 @@ export async function execute(interaction) {
   const row = matches[0];
   const detail = await getHunter(row.participant_id).catch(() => null);
 
-  const leaderKudos = standings.reduce((best, item) => Math.max(best, item.total_kudos ?? 0), 0);
-  const gap = leaderKudos - (row.total_kudos ?? 0);
-  const roundDetail = detail?.rounds ?? [];
-
-  const embed = new EmbedBuilder()
-    .setColor(row.is_eliminated ? 0x808080 : 0x7c5cff)
-    .setAuthor({ name: `Score de ${row.display_name}` })
-    .setTitle(`Rang ${row.rank} · ${row.total_kudos} kudos`)
-    .setDescription(
-      [
-        `**Manche ${round.round_number}** — ${round.status}`,
-        describeWindow(round.start_date, round.end_date),
-        '',
-        `${bar(row.total_kudos ?? 0, leaderKudos)} ${row.total_kudos}/${leaderKudos} du leader`,
-      ].join('\n'),
-    )
-    .addFields(
-      { name: 'Kudos', value: `**${row.total_kudos}**`, inline: true },
-      { name: 'Rang', value: `**${row.rank}** / ${standings.length}`, inline: true },
-      { name: 'Écart avec le 1er', value: gap > 0 ? `-${gap}` : '🏆 leader', inline: true },
-      { name: 'Reports envoyés', value: String(row.report_count ?? 0), inline: true },
-      {
-        name: 'Reports acceptés',
-        value: `${row.accepted_count ?? 0} (${ratio(row.accepted_count ?? 0, row.report_count ?? 0)})`,
-        inline: true,
-      },
-      { name: 'First bloods', value: String(row.first_blood_count ?? 0), inline: true },
-      { name: 'Critiques', value: String(row.critical_count ?? 0), inline: true },
-      { name: 'Statut', value: row.is_eliminated ? '❌ éliminé' : '✅ en course', inline: true },
-    );
-
-  if (roundDetail.length > 0) {
-    embed.addFields({
-      name: 'Détail par manche',
-      value: fitField(
-        roundDetail
-          .map(
-            (item) =>
-              `**M${item.round_number}** — ${item.total_kudos} kudos · rang ${item.rank}${item.is_eliminated ? ' · éliminé' : ''}`,
-          )
-          .join('\n'),
-      ),
-      inline: false,
-    });
-  }
-
-  if (detail && (detail.lifetime_kudos != null || detail.lifetime_reports != null)) {
-    embed.addFields({
-      name: 'Statistiques cumulées (compétition entière)',
-      value: fitField(
-        [
-          `Kudos : **${detail.lifetime_kudos ?? '—'}**`,
-          `Reports : **${detail.lifetime_reports ?? '—'}**`,
-          `First bloods : **${detail.lifetime_first_bloods ?? '—'}**`,
-        ].join(' · '),
-      ),
-      inline: false,
-    });
-  }
-
-  embed
-    .setFooter({ text: `${competition.name} · manche ${round.round_number}/${rounds.length}` })
-    .setTimestamp();
-
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [buildScoreEmbed(snapshot, row, detail)] });
 }
 
 export async function autocomplete(interaction) {

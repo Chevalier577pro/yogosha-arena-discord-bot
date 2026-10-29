@@ -123,15 +123,20 @@ Fais `Ctrl + C` pour arrêter.
 ```
 
 Affiche 15 joueurs par page, avec les boutons ◀ / ▶ pour naviguer (seul l’auteur
-de la commande peut cliquer). Au-dessus du tableau :
+de la commande peut cliquer).
 
-- **Manche** : numéro, statut, fenêtre horaire et **temps restant** avant fermeture
-- **Participants** (et éliminés)
-- **Kudos distribués**
-- **Reports** envoyés / acceptés
+- **Podium** (page 1) : 🥇 🥈 🥉 avec les ex-kæquo regroupés
+- **Tableau coloré** : 1ᵉʳ en or, 2ᵉ en blanc, 3ᵉ en magenta — et **ta propre
+  ligne en vert** si `data/players.json` contient ton ID Discord
+- **Manche** : numéro, fenêtre horaire et **temps restant** avant fermeture
+- **Participants** (et éliminés), **kudos en jeu**, **reports** envoyés → acceptés
 
-Colonnes : `#` rang · `Joueur` · `Kudos` (le score) · `Rap` reports envoyés ·
-`Acc` reports acceptés · `FB` first bloods.
+Colonnes : `#` rang · `Joueur` · `KUDOS` (le score) · `REP` reports envoyés ·
+`ACC` reports acceptés · `FB` first bloods.
+
+> Le tableau utilise un bloc de code ```ansi, ce qui permet les couleurs tout en
+> gardant l’alignement en police monospace. Les pseudos sont rendus en texte
+> brut : aucune mention `@everyone` ne peut être déclenchée.
 
 ### `/score`
 

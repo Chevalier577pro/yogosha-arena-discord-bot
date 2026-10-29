@@ -8,7 +8,8 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { getSnapshot } from '../api.js';
-import { buildTable, describeWindow } from '../format.js';
+import { buildTable, describeWindow, podium, toTableRow } from '../format.js';
+import { loadPlayers } from '../players.js';
 
 const PER_PAGE = 15;
 const COLLECTOR_MS = 180_000;
@@ -24,39 +25,52 @@ export const data = new SlashCommandBuilder()
       .setRequired(false),
   );
 
-function chunk(items, size) {
+export function chunk(items, size) {
   const pages = [];
   for (let i = 0; i < items.length; i += size) pages.push(items.slice(i, i + size));
   return pages.length > 0 ? pages : [[]];
 }
 
-function renderPage({ competition, round, rounds, standings }, pages, index) {
-  const page = pages[index];
+/**
+ * Construit l'embed d'une page de classement.
+ * Exporté pour que scripts/smoke.mjs teste exactement le rendu du bot.
+ */
+export function renderEmbed(snapshot, index, { perPage = PER_PAGE, highlight = null, pages = null } = {}) {
+  const { competition, round, rounds, standings } = snapshot;
+  const allPages = pages ?? chunk(standings, perPage);
+  const page = allPages[index] ?? [];
+  const rows = page.map(toTableRow);
+
   const totalKudos = standings.reduce((sum, row) => sum + (row.total_kudos ?? 0), 0);
   const accepted = standings.reduce((sum, row) => sum + (row.accepted_count ?? 0), 0);
   const reports = standings.reduce((sum, row) => sum + (row.report_count ?? 0), 0);
   const eliminated = standings.filter((row) => row.is_eliminated).length;
 
+  const from = index * perPage + 1;
+  const to = from + page.length - 1;
+
+  const top = index === 0 && standings.length > 0 ? `${podium(standings)}\n\n` : '';
+
   const embed = new EmbedBuilder()
     .setColor(0x7c5cff)
     .setTitle(`🏆 ${competition.name}`)
-    .setDescription(buildTable(page))
+    .setDescription(`${top}${buildTable(rows, { highlight })}`)
     .addFields(
       {
-        name: `📍 Manche ${round.round_number} / ${rounds.length}`,
-        value: `Statut : **${round.status}**\n${describeWindow(round.start_date, round.end_date)}`,
+        name: `⚔️ Manche ${round.round_number} / ${rounds.length}`,
+        value: `${describeWindow(round.start_date, round.end_date)}`,
         inline: false,
       },
       {
         name: '👥 Participants',
-        value: `${standings.length}${eliminated ? ` (dont ${eliminated} éliminé·s)` : ''}`,
+        value: `${standings.length}${eliminated ? ` (${eliminated} éliminé·s)` : ''}`,
         inline: true,
       },
-      { name: '⚡ Kudos distribués', value: String(totalKudos), inline: true },
-      { name: '📨 Reports', value: `${reports} envoyés · ${accepted} acceptés`, inline: true },
+      { name: '⚡ Kudos en jeu', value: String(totalKudos), inline: true },
+      { name: '📨 Reports', value: `${reports} → ${accepted} acceptés`, inline: true },
     )
     .setFooter({
-      text: `Yogosha Arena · page ${index + 1}/${pages.length} · ${competition.mode === 'individual' ? 'compétition individuelle' : competition.mode}`,
+      text: `Lignes ${from}–${to} sur ${standings.length} · page ${index + 1}/${allPages.length} · Kudos = score · REP envoyés · ACC acceptés · FB first bloods`,
     })
     .setTimestamp();
 
@@ -82,17 +96,18 @@ export async function execute(interaction) {
   const requested = interaction.options.getInteger('manche');
   const snapshot = await getSnapshot(requested ?? undefined);
 
+  const players = await loadPlayers();
+  const highlightName = players[interaction.user.id] ?? null;
+
   const pages = chunk(snapshot.standings, PER_PAGE);
   let index = 0;
 
-  const payload = (i) => ({
-    embeds: [renderPage(snapshot, pages, i)],
-    components: [buildRow(i, pages.length)],
+  const payload = (page) => ({
+    embeds: [renderEmbed(snapshot, page, { pages, highlight: highlightName })],
+    components: [buildRow(page, pages.length)],
   });
 
   const message = await interaction.reply({ ...payload(index), fetchReply: true });
-
-  if (pages.length < 2) return;
 
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.Button,
